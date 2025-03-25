@@ -1,0 +1,74 @@
+{
+  "name": "terminal-ssh",
+  "displayName": "Terminal SSH",
+  "description": "Extension to connect to SSH hosts using Terminal",
+  "version": "0.0.1",
+  "publisher": "omni-kobo",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Terminal-SSH Settings",
+      "properties": {
+        "terminal-ssh.sshConfigPath": {
+          "type": "string",
+          "default": "",
+          "description": "%terminal-ssh.sshConfigPath.description%"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "terminal-ssh.newTerminal",
+        "title": "%terminal-ssh.newTerminal.title%",
+        "category": "Terminal-SSH"
+      },
+      {
+        "command": "terminal-ssh.splitTerminal",
+        "title": "%terminal-ssh.splitTerminal.title%",
+        "category": "Terminal-SSH"
+      }
+    ],
+    "menus": {
+      "statusBar/remoteIndicator": [
+        {
+          "command": "terminal-ssh.newTerminal",
+          "group": "remote_20_terminal-ssh_commands@1"
+        },
+        {
+          "command": "terminal-ssh.splitTerminal",
+          "group": "remote_20_terminal-ssh_commands@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.98.0",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.21.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@jeanp413/ssh-config": "^4.3.1"
+  }
+}

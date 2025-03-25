@@ -1,0 +1,8 @@
+{
+    "locales": [
+        "ja",
+        "en"
+    ],
+    "defaultLocale": "en",
+    "messageFormat": "file"
+}

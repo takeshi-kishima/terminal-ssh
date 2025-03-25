@@ -1,0 +1,5 @@
+{
+  "terminal-ssh.sshConfigPath.description": "SSH設定ファイルのパスを指定します。デフォルトはホームディレクトリの .ssh/config です。",
+  "terminal-ssh.newTerminal.title": "ターミナルでホストに接続する…",
+  "terminal-ssh.splitTerminal.title": "分割したターミナルでホストに接続する…"
+}

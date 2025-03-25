@@ -1,0 +1,5 @@
+{
+  "terminal-ssh.sshConfigPath.description": "Specifies the path to the SSH configuration file. The default is the .ssh/config file in your home directory.",
+  "terminal-ssh.newTerminal.title": "Connect to host in terminal...",
+  "terminal-ssh.splitTerminal.title": "Connect to host in split terminal..."
+}
