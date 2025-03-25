@@ -1,8 +1,12 @@
 {
-  "name": "terminal-ssh",
-  "displayName": "Terminal SSH",
+  "name": "internal-terminal-ssh",
+  "displayName": "internal Terminal SSH",
   "description": "Extension to connect to SSH hosts using Terminal",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/takeshi-kishima/terminal-ssh.git"
+  },
   "publisher": "omni-kobo",
   "engines": {
     "vscode": "^1.98.0"
