@@ -3,10 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import SSHConfig from "@jeanp413/ssh-config";
-import { getMessages } from "./i18n"; // Import getMessages
+import { getMessages } from "./i18n";
 
 export function activate(context: vscode.ExtensionContext) {
-  const messages = getMessages(); // Get messages
+  const messages = getMessages();
 
   // QuickPick関数を作成
   async function showSSHQuickPick(): Promise<{
@@ -71,7 +71,7 @@ async function newTerminal(
   selectedItem: vscode.QuickPickItem | undefined,
   inputValue: string | undefined
 ) {
-  const messages = getMessages(); // Get messages
+  const messages = getMessages();
   // ターゲットホスト名を決定
   let targetHost = "";
   let isFromConfigFile = true;
