@@ -101,7 +101,6 @@ async function newTerminal(
   // 共通関数を使用してターミナル作成と接続を行う
   await connectWithProgress(
     targetHost,
-    () => calculateHostIconAndColor(targetHost),
     isFromConfigFile
   );
 }
@@ -138,26 +137,13 @@ async function splitTerminal(
   }
 
   // ターミナルのリストを取得
-  const existingTerminals = vscode.window.terminals;
-  let terminal: vscode.Terminal;
-
-  if (existingTerminals.length > 0) {
     // 既存のターミナルがある場合、まずターミナルを表示
-    existingTerminals[existingTerminals.length - 1].show();
-
     // ターミナル分割コマンドを実行（非同期だが、即時実行される）
-    await vscode.commands.executeCommand("workbench.action.terminal.split");
-
     // 分割後、アクティブなターミナルを取得（これが新しく分割されたターミナル）
-    const newTerminals = vscode.window.terminals;
-    terminal = newTerminals[newTerminals.length - 1]; // 最後に追加されたターミナルを使用
-  } else {
     // 既存のターミナルがない場合は新しいターミナルを作成
-    terminal = calculateHostIconAndColor(targetHost);
-  }
 
   // 共通関数を使用してターミナル作成と接続を行う
-  await connectWithProgress(targetHost, () => terminal, isFromConfigFile);
+  await connectWithProgress(targetHost, isFromConfigFile);
 }
 
 /**
@@ -246,7 +232,7 @@ async function getSSHHosts(): Promise<
 /**
  * ホスト名に基づいて色とアイコンを計算
  */
-function calculateHostIconAndColor(hostname: string): vscode.Terminal {
+function calculateHostIconAndColor(hostname: string) {
   const messages = getMessages();
   /**
    * ホスト名に基づいて色とアイコンを計算
@@ -269,27 +255,18 @@ function calculateHostIconAndColor(hostname: string): vscode.Terminal {
   ];
 
   // 新しいターミナルを作成
-  const terminal = vscode.window.createTerminal({
-    name: `${emoji} ${messages.SSH}: ${hostname}`,
-    iconPath: new vscode.ThemeIcon(
-      "remote-explorer-feedback",
-      new vscode.ThemeColor(themeColors[colorIndex]) //色はTreeItemの時にしか使えないらしい（なのでここは意味がない）
-    ),
-  });
-  return terminal;
+  return;
 }
 
 /**
  * SSHターミナル接続と進捗表示を共通化した関数
  * @param targetHost 接続先ホスト名
- * @param createTerminalFn ターミナル作成関数
  * @returns 作成されたターミナル
  */
 async function connectWithProgress(
   targetHost: string,
-  createTerminalFn: () => vscode.Terminal,
   isFromConfigFile: boolean = true
-): Promise<vscode.Terminal> {
+): Promise<void> {
   const messages = getMessages();
   return vscode.window.withProgress(
     {
@@ -300,7 +277,6 @@ async function connectWithProgress(
     async () => {
       // 両方の処理を並行して開始し、両方が完了するまで待機
       const terminalPromise = Promise.resolve().then(() => {
-        const terminal = createTerminalFn();
 
         // 設定ファイルからのホストの場合のみ -F オプションを付ける
         if (isFromConfigFile) {
@@ -322,8 +298,7 @@ async function connectWithProgress(
               messages.sshConfigNotFound.replace("{0}", realPath)
             );
             // ターミナルは作成するが、コマンドは送信しない
-            terminal.show();
-            return terminal;
+            return;
           }
 
           // Windowsの場合、コマンドラインで使用するためバックスラッシュをエスケープする
@@ -332,15 +307,12 @@ async function connectWithProgress(
           }
 
           // SSHコマンドを実行
-          terminal.sendText(`ssh -F "${effectivePath}" ${targetHost}`);
         } else {
           // 手動入力されたホストの場合は -F オプションを付けない
-          terminal.sendText(`ssh ${targetHost}`);
         }
 
         // ターミナルを表示
-        terminal.show();
-        return terminal;
+        return;
       });
 
       // 最低3秒間は表示するためのタイマー
