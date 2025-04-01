@@ -4,6 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import SSHConfig from "@jeanp413/ssh-config";
 import { getMessages } from "./i18n";
+import { SSHTerminal } from './sshTerminal';
 
 export function activate(context: vscode.ExtensionContext) {
   const messages = getMessages();
@@ -46,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-ssh.newTerminal",
     async () => {
       const { selectedItem, inputValue } = await showSSHQuickPick();
-      await newTerminal(selectedItem, inputValue);
+      await newTerminal(selectedItem, inputValue, context);
     }
   );
 
@@ -55,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-ssh.splitTerminal",
     async () => {
       const { selectedItem, inputValue } = await showSSHQuickPick();
-      await splitTerminal(selectedItem, inputValue);
+      await splitTerminal(selectedItem, inputValue, context);
     }
   );
 
@@ -69,7 +70,8 @@ export function activate(context: vscode.ExtensionContext) {
  */
 async function newTerminal(
   selectedItem: vscode.QuickPickItem | undefined,
-  inputValue: string | undefined
+  inputValue: string | undefined,
+  context: vscode.ExtensionContext // context パラメータを追加
 ) {
   const messages = getMessages();
   // ターゲットホスト名を決定
@@ -90,7 +92,7 @@ async function newTerminal(
     selectedItem.label.includes(messages.newConnection)
   ) {
     // 新しい接続先を追加する場合は
-    newSshConnection("new");
+    newSshConnection("new", context);
     return;
   }
 
@@ -101,13 +103,15 @@ async function newTerminal(
   // 共通関数を使用してターミナル作成と接続を行う
   await connectWithProgress(
     targetHost,
-    isFromConfigFile
+    isFromConfigFile,
+    context
   );
 }
 
 async function splitTerminal(
   selectedItem: vscode.QuickPickItem | undefined,
-  inputValue: string | undefined
+  inputValue: string | undefined,
+  context: vscode.ExtensionContext // context パラメータを追加
 ) {
   const messages = getMessages();
   // ターゲットホスト名を決定
@@ -128,7 +132,7 @@ async function splitTerminal(
     selectedItem.label.includes(messages.newConnection)
   ) {
     // 新しい接続先を追加する場合
-    newSshConnection("split");
+    newSshConnection("split", context);
     return;
   }
 
@@ -143,13 +147,13 @@ async function splitTerminal(
     // 既存のターミナルがない場合は新しいターミナルを作成
 
   // 共通関数を使用してターミナル作成と接続を行う
-  await connectWithProgress(targetHost, isFromConfigFile);
+  await connectWithProgress(targetHost, isFromConfigFile, context);
 }
 
 /**
  * 新しいSSH接続用関数
  */
-async function newSshConnection(command: "new" | "split") {
+async function newSshConnection(command: "new" | "split", context: vscode.ExtensionContext) {
   const messages = getMessages();
   // ユーザーからSSHの接続先情報を取得
   const hostname = await vscode.window.showInputBox({
@@ -174,10 +178,10 @@ async function newSshConnection(command: "new" | "split") {
 
   if (command === "new") {
     // 新しいターミナルを作成
-    await newTerminal(undefined, fullHostname);
+    await newTerminal(undefined, fullHostname, context);
   } else {
     // ターミナルを分割
-    await splitTerminal(undefined, fullHostname);
+    await splitTerminal(undefined, fullHostname, context);
   }
 }
 
@@ -263,9 +267,11 @@ function calculateHostIconAndColor(hostname: string) {
  * @param targetHost 接続先ホスト名
  * @returns 作成されたターミナル
  */
+// context パラメータを追加する
 async function connectWithProgress(
   targetHost: string,
-  isFromConfigFile: boolean = true
+  isFromConfigFile: boolean = true,
+  context: vscode.ExtensionContext // context パラメータを追加
 ): Promise<void> {
   const messages = getMessages();
   return vscode.window.withProgress(
@@ -274,61 +280,49 @@ async function connectWithProgress(
       title: messages.connecting.replace("{0}", targetHost),
       cancellable: false,
     },
-    async () => {
-      // 両方の処理を並行して開始し、両方が完了するまで待機
-      const terminalPromise = Promise.resolve().then(() => {
-
-        // 設定ファイルからのホストの場合のみ -F オプションを付ける
+    async (progress) => {
+      try {
+        // SSHTerminal インスタンスを作成
+        const sshTerminal = new SSHTerminal(context);
+        
         if (isFromConfigFile) {
           const sshConfigPath = vscode.workspace
             .getConfiguration("terminal-ssh")
             .get<string>("sshConfigPath");
 
           // 設定値が空または未定義の場合はデフォルトのパスを使用
-          let effectivePath =
+          const effectivePath =
             sshConfigPath || path.join(os.homedir(), ".ssh", "config");
 
-          // 実際のファイルパス
-          const realPath = effectivePath;
-
           // 設定ファイルが存在するか確認
-          if (!fs.existsSync(realPath)) {
+          if (!fs.existsSync(effectivePath)) {
             // 設定ファイルが存在しない場合はエラーメッセージを表示
             vscode.window.showErrorMessage(
-              messages.sshConfigNotFound.replace("{0}", realPath)
+              messages.sshConfigNotFound.replace("{0}", effectivePath)
             );
-            // ターミナルは作成するが、コマンドは送信しない
             return;
           }
-
-          // Windowsの場合、コマンドラインで使用するためバックスラッシュをエスケープする
-          if (process.platform === "win32") {
-            effectivePath = effectivePath.replace(/\\/g, "\\\\");
-          }
-
-          // SSHコマンドを実行
+          
+          // 設定ファイルを使用して接続
+          await sshTerminal.connect(targetHost, true, effectivePath);
         } else {
-          // 手動入力されたホストの場合は -F オプションを付けない
+          // 直接ホスト名を使用して接続
+          await sshTerminal.connect(targetHost, false);
         }
 
-        // ターミナルを表示
-        return;
-      });
-
-      // 最低3秒間は表示するためのタイマー
-      const timerPromise = new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // 両方の処理が完了するのを待つ
-      const [terminal] = await Promise.all([terminalPromise, timerPromise]);
-
-      // 接続完了後にステータスバーに表示
-      vscode.window.setStatusBarMessage(
-        messages.connected.replace("{0}", targetHost),
-        2000
-      );
-
-      // ターミナル変数をコマンド内で使用可能にするために返す
-      return terminal;
+        // 最低でも1秒間は進捗表示
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // 接続完了後にステータスバーに表示
+        vscode.window.setStatusBarMessage(
+          messages.connected.replace("{0}", targetHost),
+          2000
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Failed to connect to ${targetHost}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
   );
 }
