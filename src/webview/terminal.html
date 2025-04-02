@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="${language}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="${xtermCssUri}" />
+    <link rel="stylesheet" href="${stylesheetUri}" />
+    <title>SSH Terminal</title>
+  </head>
+  <body>
+    <div id="terminal-container">
+      <!-- リサイズハンドル -->
+      <div class="resize-handle" id="resize-handle"></div>
+    </div>
+    <div class="status" id="status"></div>
+
+    <!-- スクリプト読み込み -->
+    <script src="${xtermJsUri}"></script>
+    <script src="${xtermFitAddonUri}"></script>
+    <script src="${scriptUri}"></script>
+  </body>
+</html>
