@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import SSHConfig from "@jeanp413/ssh-config";
 import { getMessages } from "./i18n";
-import { SSHTerminal } from './sshTerminal';
+import { SSHTerminal } from "./sshTerminal";
 
 export function activate(context: vscode.ExtensionContext) {
   const messages = getMessages();
@@ -77,20 +77,14 @@ async function newTerminal(
   // ターゲットホスト名を決定
   let targetHost = "";
   let isFromConfigFile = true;
-  if (
-    selectedItem &&
-    !selectedItem.label.includes(messages.newConnection)
-  ) {
+  if (selectedItem && !selectedItem.label.includes(messages.newConnection)) {
     targetHost = selectedItem.label;
   } else if (inputValue) {
     targetHost = inputValue;
     isFromConfigFile = false;
   }
 
-  if (
-    selectedItem &&
-    selectedItem.label.includes(messages.newConnection)
-  ) {
+  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
     // 新しい接続先を追加する場合は
     newSshConnection("new", context);
     return;
@@ -101,11 +95,7 @@ async function newTerminal(
   }
 
   // 共通関数を使用してターミナル作成と接続を行う
-  await connectWithProgress(
-    targetHost,
-    isFromConfigFile,
-    context
-  );
+  await connectWithProgress(targetHost, isFromConfigFile, context);
 }
 
 async function splitTerminal(
@@ -117,20 +107,14 @@ async function splitTerminal(
   // ターゲットホスト名を決定
   let targetHost = "";
   let isFromConfigFile = true;
-  if (
-    selectedItem &&
-    !selectedItem.label.includes(messages.newConnection)
-  ) {
+  if (selectedItem && !selectedItem.label.includes(messages.newConnection)) {
     targetHost = selectedItem.label;
   } else if (inputValue) {
     targetHost = inputValue;
     isFromConfigFile = false;
   }
 
-  if (
-    selectedItem &&
-    selectedItem.label.includes(messages.newConnection)
-  ) {
+  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
     // 新しい接続先を追加する場合
     newSshConnection("split", context);
     return;
@@ -141,10 +125,10 @@ async function splitTerminal(
   }
 
   // ターミナルのリストを取得
-    // 既存のターミナルがある場合、まずターミナルを表示
-    // ターミナル分割コマンドを実行（非同期だが、即時実行される）
-    // 分割後、アクティブなターミナルを取得（これが新しく分割されたターミナル）
-    // 既存のターミナルがない場合は新しいターミナルを作成
+  // 既存のターミナルがある場合、まずターミナルを表示
+  // ターミナル分割コマンドを実行（非同期だが、即時実行される）
+  // 分割後、アクティブなターミナルを取得（これが新しく分割されたターミナル）
+  // 既存のターミナルがない場合は新しいターミナルを作成
 
   // 共通関数を使用してターミナル作成と接続を行う
   await connectWithProgress(targetHost, isFromConfigFile, context);
@@ -153,7 +137,10 @@ async function splitTerminal(
 /**
  * 新しいSSH接続用関数
  */
-async function newSshConnection(command: "new" | "split", context: vscode.ExtensionContext) {
+async function newSshConnection(
+  command: "new" | "split",
+  context: vscode.ExtensionContext
+) {
   const messages = getMessages();
   // ユーザーからSSHの接続先情報を取得
   const hostname = await vscode.window.showInputBox({
@@ -284,7 +271,7 @@ async function connectWithProgress(
       try {
         // SSHTerminal インスタンスを作成
         const sshTerminal = new SSHTerminal(context);
-        
+
         if (isFromConfigFile) {
           const sshConfigPath = vscode.workspace
             .getConfiguration("terminal-ssh")
@@ -302,7 +289,7 @@ async function connectWithProgress(
             );
             return;
           }
-          
+
           // 設定ファイルを使用して接続
           await sshTerminal.connect(targetHost, true, effectivePath);
         } else {
@@ -311,8 +298,8 @@ async function connectWithProgress(
         }
 
         // 最低でも1秒間は進捗表示
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
         // 接続完了後にステータスバーに表示
         vscode.window.setStatusBarMessage(
           messages.connected.replace("{0}", targetHost),
@@ -320,7 +307,9 @@ async function connectWithProgress(
         );
       } catch (error) {
         vscode.window.showErrorMessage(
-          `Failed to connect to ${targetHost}: ${error instanceof Error ? error.message : String(error)}`
+          `Failed to connect to ${targetHost}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
         );
       }
     }
