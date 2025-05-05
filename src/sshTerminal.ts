@@ -13,7 +13,7 @@ export class SSHTerminal {
     this.panel = vscode.window.createWebviewPanel(
       "sshTerminal",
       "SSH Terminal",
-      vscode.ViewColumn.Active,
+      vscode.ViewColumn.Active | vscode.ViewColumn.Beside,
       {
         enableScripts: true,
         localResourceRoots: [
