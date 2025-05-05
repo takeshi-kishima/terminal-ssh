@@ -48,7 +48,8 @@
         },
         {
           "command": "terminal-ssh.splitTerminal",
-          "group": "remote_20_terminal-ssh_commands@2"
+          "group": "remote_20_terminal-ssh_commands@2",
+          "when": "false"
         }
       ]
     }
