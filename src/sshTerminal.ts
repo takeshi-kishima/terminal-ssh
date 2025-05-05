@@ -25,6 +25,21 @@ export class SSHTerminal {
       }
     );
 
+    this.panel.iconPath = {
+      light: vscode.Uri.joinPath(
+        context.extensionUri,
+        "media",
+        "icons",
+        "terminal-icon-light.svg"
+      ),
+      dark: vscode.Uri.joinPath(
+        context.extensionUri,
+        "media",
+        "icons",
+        "terminal-icon-dark.svg"
+      ),
+    };
+
     // WebView内容の初期化
     this.panel.webview.html = this.getWebViewContent();
 
