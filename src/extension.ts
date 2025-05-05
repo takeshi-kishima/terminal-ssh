@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-ssh.newTerminal",
     async () => {
       const { selectedItem, inputValue } = await showSSHQuickPick();
-      await newTerminal(selectedItem, inputValue, context);
+      await handleTerminalConnection(selectedItem, inputValue, context, false);
     }
   );
 
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-ssh.splitTerminal",
     async () => {
       const { selectedItem, inputValue } = await showSSHQuickPick();
-      await splitTerminal(selectedItem, inputValue, context);
+      await handleTerminalConnection(selectedItem, inputValue, context, true);
     }
   );
 
@@ -66,28 +66,56 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * 新しいターミナルを作成する関数
+ * ターミナル接続処理の共通メソッド
+ * @param selectedItem クイックピックで選択されたアイテム
+ * @param inputValue 入力された値
+ * @param context 拡張機能のコンテキスト
+ * @param split 分割するかどうか
  */
-async function newTerminal(
+async function handleTerminalConnection(
   selectedItem: vscode.QuickPickItem | undefined,
   inputValue: string | undefined,
-  context: vscode.ExtensionContext // context パラメータを追加
+  context: vscode.ExtensionContext,
+  split: boolean
 ) {
   const messages = getMessages();
-  // ターゲットホスト名を決定
+  // ターゲットホスト名
   let targetHost = "";
+  // SSH設定ファイルからホスト情報を取得
   let isFromConfigFile = true;
-  if (selectedItem && !selectedItem.label.includes(messages.newConnection)) {
+
+  // 「新しい接続」オプションが選択された場合
+  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
+    // ユーザーからSSHの接続先情報を取得
+    const hostname = await vscode.window.showInputBox({
+      placeHolder: messages.hostname,
+      prompt: messages.enterHostname,
+    });
+
+    if (!hostname) {
+      return; // ユーザーがキャンセルした場合
+    }
+
+    const username = await vscode.window.showInputBox({
+      placeHolder: messages.username,
+      prompt: messages.enterUsername,
+    });
+
+    if (!username) {
+      return; // ユーザーがキャンセルした場合
+    }
+
+    // フルホスト名
+    targetHost = `${username}@${hostname}`;
+    isFromConfigFile = false;
+
+  } else if (selectedItem) {
     targetHost = selectedItem.label;
+    isFromConfigFile = true;
+
   } else if (inputValue) {
     targetHost = inputValue;
     isFromConfigFile = false;
-  }
-
-  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
-    // 新しい接続先を追加する場合は
-    newSshConnection("new", context);
-    return;
   }
 
   if (!targetHost) {
@@ -96,80 +124,6 @@ async function newTerminal(
 
   // 共通関数を使用してターミナル作成と接続を行う
   await connectWithProgress(targetHost, isFromConfigFile, context);
-}
-
-async function splitTerminal(
-  selectedItem: vscode.QuickPickItem | undefined,
-  inputValue: string | undefined,
-  context: vscode.ExtensionContext // context パラメータを追加
-) {
-  const messages = getMessages();
-  // ターゲットホスト名を決定
-  let targetHost = "";
-  let isFromConfigFile = true;
-  if (selectedItem && !selectedItem.label.includes(messages.newConnection)) {
-    targetHost = selectedItem.label;
-  } else if (inputValue) {
-    targetHost = inputValue;
-    isFromConfigFile = false;
-  }
-
-  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
-    // 新しい接続先を追加する場合
-    newSshConnection("split", context);
-    return;
-  }
-
-  if (!targetHost) {
-    return; // ホスト名がない場合は何もしない
-  }
-
-  // ターミナルのリストを取得
-  // 既存のターミナルがある場合、まずターミナルを表示
-  // ターミナル分割コマンドを実行（非同期だが、即時実行される）
-  // 分割後、アクティブなターミナルを取得（これが新しく分割されたターミナル）
-  // 既存のターミナルがない場合は新しいターミナルを作成
-
-  // 共通関数を使用してターミナル作成と接続を行う
-  await connectWithProgress(targetHost, isFromConfigFile, context);
-}
-
-/**
- * 新しいSSH接続用関数
- */
-async function newSshConnection(
-  command: "new" | "split",
-  context: vscode.ExtensionContext
-) {
-  const messages = getMessages();
-  // ユーザーからSSHの接続先情報を取得
-  const hostname = await vscode.window.showInputBox({
-    placeHolder: messages.hostname,
-    prompt: messages.enterHostname,
-  });
-
-  if (!hostname) {
-    return; // ユーザーがキャンセルした場合
-  }
-
-  const username = await vscode.window.showInputBox({
-    placeHolder: messages.username,
-    prompt: messages.enterUsername,
-  });
-
-  if (!username) {
-    return; // ユーザーがキャンセルした場合
-  }
-
-  const fullHostname = `${username}@${hostname}`;
-
-  if (command === "new") {
-    // 新しいターミナルを作成
-    await newTerminal(undefined, fullHostname, context);
-  } else {
-    // ターミナルを分割
-    await splitTerminal(undefined, fullHostname, context);
-  }
 }
 
 /**
