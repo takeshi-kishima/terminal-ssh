@@ -43,6 +43,8 @@ export class SSHTerminal {
     useConfigFile: boolean = false,
     configPath?: string
   ): Promise<void> {
+    // タイトルを動的に設定
+    this.panel.title = host;
     // WebViewからのメッセージ処理の設定
     this.panel.webview.onDidReceiveMessage(
       (message: {
