@@ -114,7 +114,21 @@ window.addEventListener('message', event => {
             ensureScrollVisibility();
             break;
         case 'exit':
-            term.write('\r\n\r\nConnection closed (exit code: ' + message.code + ')\r\n');
+            vscode.postMessage({ type: "closePanel" });
+            break;
+        case 'setBackground':
+            // // (1) ターミナルコンテナの背景色を変更
+            // terminalContainer.style.backgroundColor = message.color;
+            // // (2) xterm.js ビューポートにも直接上書き
+            // const viewport = document.querySelector('.xterm-viewport');
+            // if (viewport) {
+            //     viewport.style.backgroundColor = message.color;
+            // }
+            // // (3) xterm.js の行にも直接上書き
+            // const xtermRows = document.querySelector('.xterm-rows');
+            // if (xtermRows) {
+            //     xtermRows.style.color = message.color;
+            // }
             break;
     }
 });

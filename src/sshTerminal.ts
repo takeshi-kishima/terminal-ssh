@@ -48,11 +48,8 @@ export class SSHTerminal {
     // WebViewからのメッセージ処理の設定
     this.panel.webview.onDidReceiveMessage(
       (message: {
-        type: "ready" | "input";
-        cols?: number;
-        rows?: number;
+        type: "ready" | "input" | "closePanel";
         data?: string;
-        code?: number;
       }) => {
         switch (message.type) {
           case "input":
@@ -61,10 +58,26 @@ export class SSHTerminal {
               this.sshProcess.stdin.write(message.data);
             }
             break;
+
           case "ready":
+
+            // // 1. ランダム色を生成
+            // const bgColor =
+            // "#" +
+            // Math.floor(Math.random() * 0xffffff)
+            //   .toString(16)
+            //   .padStart(6, "0");
+            // // 2. Webviewに送信
+            // this.panel.webview.postMessage({ type: "setBackground", color: bgColor });
+          
             // ターミナルの準備ができたらSSH接続を開始
             this.startSSHProcess(host, useConfigFile, configPath);
             break;
+
+          case "closePanel":
+              // Webview からのリクエストで panel を閉じる
+              this.panel.dispose();
+              break;
         }
       },
       undefined,
