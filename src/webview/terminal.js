@@ -3,8 +3,6 @@ const vscode = acquireVsCodeApi();
 
 // DOM要素の取得
 const terminalContainer = document.getElementById('terminal-container');
-const resizeHandle = document.getElementById('resize-handle');
-const status = document.getElementById('status');
 
 // ターミナルの作成
 const term = new Terminal({
@@ -79,48 +77,6 @@ function ensureScrollVisibility() {
         }, 50);
     }
 }
-
-// リサイズ機能の実装 (マウスドラッグ)
-let isResizing = false;
-let lastX = 0;
-let lastY = 0;
-
-resizeHandle.addEventListener('mousedown', function (e) {
-    isResizing = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-    e.preventDefault();
-});
-
-document.addEventListener('mousemove', function (e) {
-    if (!isResizing) {
-        return;
-    }
-
-    const deltaX = e.clientX - lastX;
-    const deltaY = e.clientY - lastY;
-
-    const newWidth = terminalContainer.offsetWidth + deltaX;
-    const newHeight = terminalContainer.offsetHeight + deltaY;
-
-    terminalContainer.style.width = newWidth + 'px';
-    terminalContainer.style.height = newHeight + 'px';
-
-    lastX = e.clientX;
-    lastY = e.clientY;
-
-    // ターミナルのサイズを調整
-    updateTerminalSize();
-
-    e.preventDefault();
-});
-
-document.addEventListener('mouseup', function (e) {
-    if (isResizing) {
-        isResizing = false;
-        e.preventDefault();
-    }
-});
 
 // ウィンドウリサイズ時も調整
 window.addEventListener('resize', updateTerminalSize);

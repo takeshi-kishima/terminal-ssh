@@ -10,17 +10,11 @@ body {
 }
 
 #terminal-container {
-  width: 80%;
-  height: 80%;
-  min-width: 400px;
-  min-height: 300px;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: calc(100% - 10px);
   position: relative;
-  margin: 20px auto;
   border: 1px solid #444;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-  resize: both;
   overflow: hidden;
   padding-bottom: 10px;
 }
@@ -56,20 +50,10 @@ body {
   padding-bottom: 20px;
 }
 
-.resize-handle {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  background: #666;
-  right: 0;
-  bottom: 0;
-  cursor: nwse-resize;
-}
-
 .status {
   position: absolute;
   bottom: 5px;
-  left: 5px;
+  right: 5px;
   color: #999;
   font-size: 12px;
   z-index: 10;
