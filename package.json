@@ -37,7 +37,8 @@
       {
         "command": "terminal-ssh.splitTerminal",
         "title": "%terminal-ssh.splitTerminal.title%",
-        "category": "Terminal-SSH"
+        "category": "Terminal-SSH",
+        "enablement": "false"
       }
     ],
     "menus": {
