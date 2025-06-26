@@ -106,7 +106,11 @@ export class SSHTerminal {
     configPath?: string
   ): void {
     // SSHコマンドの引数を構築
-    const sshArgs: string[] = ["-tt"]; // 強制的にpseudo-terminalを割り当て
+    const sshArgs: string[] = [
+      "-tt", // 強制的にpseudo-terminalを割り当て
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null"
+    ];
 
     if (useConfigFile && configPath) {
       sshArgs.push("-F", configPath);
