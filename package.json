@@ -2,7 +2,7 @@
   "name": "internal-terminal-ssh",
   "displayName": "internal Terminal SSH",
   "description": "Extension to connect to SSH hosts in editor pane",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/takeshi-kishima/terminal-ssh.git"
