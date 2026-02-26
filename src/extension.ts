@@ -1,181 +1,264 @@
-﻿import * as vscode from "vscode";
+import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import SSHConfig from "@jeanp413/ssh-config";
-import { getMessages } from "./i18n";
-import {
-  resolveTerminalColors,
-  type TerminalColors,
-} from "./hostColorResolver";
-import { SSHTerminal } from "./sshTerminal";
 
-export function activate(context: vscode.ExtensionContext) {
-  const messages = getMessages();
+type TerminalColors = {
+  foreground: string;
+  background: string;
+};
 
-  // QuickPick関数を作成
-  async function showSSHQuickPick(): Promise<{
-    selectedItem: vscode.QuickPickItem | undefined;
-    inputValue: string;
-  }> {
-    // SSHの設定ファイルからホスト情報を取得
-    const sshHosts = await getSSHHosts();
+type ExtensionMessages = {
+  newConnection: string;
+  quickPickPlaceholder: string;
+  hostname: string;
+  enterHostname: string;
+  username: string;
+  enterUsername: string;
+  SSH: string;
+  connecting: string;
+  connected: string;
+  sshConfigNotFound: string;
+  readConfigError: string;
+};
 
-    // QuickPickを作成
-    const quickPick = vscode.window.createQuickPick();
-    quickPick.items = [
-      ...sshHosts,
-      {
-        label: messages.newConnection,
-        description: "",
-      },
-    ];
-    quickPick.placeholder = messages.quickPickPlaceholder;
-    quickPick.ignoreFocusOut = true;
+type ResolvedSshConfigPath = {
+  configuredPath: string;
+  effectivePath: string;
+  usedDefault: boolean;
+};
 
-    return new Promise((resolve) => {
-      quickPick.onDidAccept(() => {
-        const selectedItem = quickPick.selectedItems[0];
-        const inputValue = quickPick.value; // ユーザーが入力した文字列
-        quickPick.hide();
-        resolve({ selectedItem, inputValue });
-      });
+const FALLBACK_MESSAGES: ExtensionMessages = {
+  newConnection: "$(plus) New SSH connection...",
+  quickPickPlaceholder: "Select a configured SSH host or enter user@host",
+  hostname: "hostname",
+  enterHostname: "Enter SSH hostname",
+  username: "username",
+  enterUsername: "Enter username",
+  SSH: "SSH",
+  connecting: "Connecting to {0}...",
+  connected: "Connected to {0}",
+  sshConfigNotFound: "SSH configuration file not found: {0}",
+  readConfigError: "Failed to read SSH configuration file:",
+};
 
-      // QuickPickを表示
-      quickPick.show();
-    });
+function errorToText(error: unknown): string {
+  if (error instanceof Error && error.stack) {
+    return error.stack;
   }
-
-  // 新しいターミナルを作成するコマンド
-  const newTerminalDisposable = vscode.commands.registerCommand(
-    "terminal-ssh.newTerminal",
-    async () => {
-      const { selectedItem, inputValue } = await showSSHQuickPick();
-      await handleTerminalConnection(selectedItem, inputValue, context, false);
-    }
-  );
-
-  // ターミナルを分割するコマンド
-  const splitTerminalDisposable = vscode.commands.registerCommand(
-    "terminal-ssh.splitTerminal",
-    async () => {
-      const { selectedItem, inputValue } = await showSSHQuickPick();
-      await handleTerminalConnection(selectedItem, inputValue, context, true);
-    }
-  );
-
-  // コマンドをサブスクリプションに追加
-  context.subscriptions.push(newTerminalDisposable);
-  context.subscriptions.push(splitTerminalDisposable);
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
-async function handleTerminalConnection(
-  selectedItem: vscode.QuickPickItem | undefined,
-  inputValue: string | undefined,
-  context: vscode.ExtensionContext,
-  split: boolean
-) {
-  const messages = getMessages();
-  // ターゲットホスト名
-  let targetHost = "";
-  // SSH設定ファイルからホスト情報を取得
-  let isFromConfigFile = true;
-
-  // 「新しい接続」オプションが選択された場合
-  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
-    // ユーザーからSSHの接続先情報を取得
-    const hostname = await vscode.window.showInputBox({
-      placeHolder: messages.hostname,
-      prompt: messages.enterHostname,
-    });
-
-    if (!hostname) {
-      return; // ユーザーがキャンセルした場合
-    }
-
-    const username = await vscode.window.showInputBox({
-      placeHolder: messages.username,
-      prompt: messages.enterUsername,
-    });
-
-    if (!username) {
-      return; // ユーザーがキャンセルした場合
-    }
-
-    // フルホスト名
-    targetHost = `${username}@${hostname}`;
-    isFromConfigFile = false;
-  } else if (selectedItem) {
-    targetHost = selectedItem.label;
-    isFromConfigFile = true;
-  } else if (inputValue) {
-    targetHost = inputValue;
-    isFromConfigFile = false;
-  }
-
-  if (!targetHost) {
-    return; // ホスト名がない場合は何もしない
-  }
-
-  const terminalColors = getTerminalColorsForHost(targetHost, isFromConfigFile);
-  await connectWithProgress(targetHost, isFromConfigFile, context, terminalColors);
+function logError(
+  output: vscode.OutputChannel,
+  commandId: string,
+  error: unknown
+): void {
+  output.appendLine(`[${commandId}] ERROR`);
+  output.appendLine(errorToText(error));
 }
 
-async function getSSHHosts(): Promise<Array<{ label: string; description: string }>> {
-  const messages = getMessages();
-  // 選択されたホストに接続
-  const configPath = vscode.workspace
-    .getConfiguration("terminal-ssh")
-    .get<string>("sshConfigPath");
+async function loadMessages(
+  output: vscode.OutputChannel
+): Promise<ExtensionMessages> {
+  try {
+    const i18n = await import("./i18n/index.js");
+    return { ...FALLBACK_MESSAGES, ...i18n.getMessages() };
+  } catch (error) {
+    logError(output, "terminal-ssh.messages", error);
+    return FALLBACK_MESSAGES;
+  }
+}
 
-  // 設定値が空または未定義の場合はデフォルトのパスを使用
-  const sshConfigPath = configPath || path.join(os.homedir(), ".ssh", "config");
+function resolveSshConfigPath(): ResolvedSshConfigPath {
+  const configPathRaw =
+    vscode.workspace
+      .getConfiguration("terminal-ssh")
+      .get<string>("sshConfigPath") ?? "";
+  const configuredPath = configPathRaw.trim();
+  const usedDefault = configuredPath.length === 0;
+  const effectivePath = usedDefault
+    ? path.join(os.homedir(), ".ssh", "config")
+    : expandConfigPath(configuredPath);
+
+  return {
+    configuredPath,
+    effectivePath,
+    usedDefault,
+  };
+}
+
+function expandConfigPath(inputPath: string): string {
+  let expanded = inputPath;
+
+  // Allow users to configure "~/.ssh/config" style paths.
+  if (expanded.startsWith("~")) {
+    const tail = expanded.slice(1).replace(/^[/\\]+/, "");
+    expanded = path.join(os.homedir(), tail);
+  }
+
+  // Expand ${env:NAME} and $NAME placeholders.
+  expanded = expanded.replace(/\$\{env:([^}]+)\}/gi, (_, name: string) => {
+    return process.env[name] ?? "";
+  });
+  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name: string) => {
+    return process.env[name] ?? "";
+  });
+
+  // Expand Windows %NAME% placeholders.
+  expanded = expanded.replace(/%([^%]+)%/g, (_, name: string) => {
+    return process.env[name] ?? "";
+  });
+
+  return path.resolve(expanded);
+}
+
+async function getSSHHosts(
+  messages: ExtensionMessages,
+  output: vscode.OutputChannel
+): Promise<Array<{ label: string; description: string }>> {
+  const sshConfigPath = resolveSshConfigPath().effectivePath;
   const hosts: Array<{ label: string; description: string }> = [];
 
   try {
-    if (fs.existsSync(sshConfigPath)) {
-      const configContent = fs.readFileSync(sshConfigPath, "utf-8");
-      const config = SSHConfig.parse(configContent);
+    if (!fs.existsSync(sshConfigPath)) {
+      return hosts;
+    }
 
-      for (const line of config) {
-        if (
-          line.type === SSHConfig.DIRECTIVE &&
-          line.param === "Host" &&
-          line.value
-        ) {
-          const host = Array.isArray(line.value) ? line.value[0] : line.value;
-          if (!host.includes("*")) {
-            // ワイルドカードを除外
-            const hostConfig = config.compute(host) as Record<string, string>;
-            const user = hostConfig["User"] || "";
-            const hostName = hostConfig["HostName"] || host;
+    const { default: SSHConfig } = await import("@jeanp413/ssh-config");
+    const SSHConfigAny = SSHConfig as any;
+    const configContent = fs.readFileSync(sshConfigPath, "utf-8");
+    const config = SSHConfigAny.parse(configContent);
 
-            hosts.push({
-              label: host,
-              description: `${user ? user + "@" : ""}${hostName}`,
-            });
-          }
+    for (const line of config) {
+      if (
+        (line as any).type === SSHConfigAny.DIRECTIVE &&
+        (line as any).param === "Host" &&
+        (line as any).value
+      ) {
+        const host = Array.isArray((line as any).value) ? (line as any).value[0] : (line as any).value;
+        if (!host.includes("*")) {
+          const hostConfig = config.compute(host) as Record<string, string>;
+          const user = hostConfig["User"] || "";
+          const hostName = hostConfig["HostName"] || host;
+          hosts.push({
+            label: host,
+            description: `${user ? `${user}@` : ""}${hostName}`,
+          });
         }
       }
     }
+
+    // Fallback parser: some configs with unusual directives/comments can lead
+    // to 0 extracted hosts via parser iteration. Keep UX stable by scanning
+    // plain Host blocks.
+    if (hosts.length === 0) {
+      const hostDescriptions = new Map<string, string>();
+      const lines = configContent.split(/\r?\n/);
+      let currentHosts: string[] = [];
+      let currentUser = "";
+      let currentHostName = "";
+
+      const pushCurrentHosts = (): void => {
+        for (const host of currentHosts) {
+          if (hostDescriptions.has(host)) {
+            continue;
+          }
+          const description = `${currentUser ? `${currentUser}@` : ""}${currentHostName || host}`;
+          hostDescriptions.set(host, description);
+        }
+      };
+
+      for (const rawLine of lines) {
+        const lineWithoutComment = rawLine.replace(/\s+#.*$/, "");
+        const trimmed = lineWithoutComment.trim();
+        if (trimmed.length === 0) {
+          continue;
+        }
+
+        const hostMatch = /^\s*Host\s+(.+)$/i.exec(lineWithoutComment);
+        if (hostMatch) {
+          pushCurrentHosts();
+          currentHosts = hostMatch[1]
+            .split(/\s+/)
+            .map((v) => v.trim())
+            .filter((v) => v.length > 0 && !v.includes("*"));
+          currentUser = "";
+          currentHostName = "";
+          continue;
+        }
+
+        if (currentHosts.length === 0) {
+          continue;
+        }
+
+        const userMatch = /^\s*User\s+(.+)$/i.exec(lineWithoutComment);
+        if (userMatch && currentUser.length === 0) {
+          currentUser = userMatch[1].trim();
+          continue;
+        }
+
+        const hostNameMatch = /^\s*HostName\s+(.+)$/i.exec(lineWithoutComment);
+        if (hostNameMatch && currentHostName.length === 0) {
+          currentHostName = hostNameMatch[1].trim();
+        }
+      }
+
+      pushCurrentHosts();
+
+      for (const [host, description] of hostDescriptions) {
+        hosts.push({
+          label: host,
+          description,
+        });
+      }
+    }
   } catch (error) {
-    console.error(messages.readConfigError, error);
+    output.appendLine(messages.readConfigError);
+    logError(output, "terminal-ssh.getSSHHosts", error);
   }
 
   return hosts;
 }
 
-function getEffectiveSshConfigPath(): string {
-  const configPath = vscode.workspace
-    .getConfiguration("terminal-ssh")
-    .get<string>("sshConfigPath");
-  return configPath || path.join(os.homedir(), ".ssh", "config");
+async function showSSHQuickPick(
+  messages: ExtensionMessages,
+  output: vscode.OutputChannel
+): Promise<{
+  selectedItem: vscode.QuickPickItem | undefined;
+  inputValue: string;
+}> {
+  const sshHosts = await getSSHHosts(messages, output);
+  const quickPick = vscode.window.createQuickPick();
+  quickPick.items = [
+    ...sshHosts,
+    {
+      label: messages.newConnection,
+      description: "",
+    },
+  ];
+  quickPick.placeholder = messages.quickPickPlaceholder;
+  quickPick.ignoreFocusOut = true;
+
+  return new Promise((resolve) => {
+    quickPick.onDidAccept(() => {
+      const selectedItem = quickPick.selectedItems[0];
+      const inputValue = quickPick.value;
+      quickPick.hide();
+      resolve({ selectedItem, inputValue });
+    });
+    quickPick.show();
+  });
 }
 
-function getTerminalColorsForHost(
+async function getTerminalColorsForHost(
   targetHost: string,
-  isFromConfigFile: boolean
-): TerminalColors {
+  isFromConfigFile: boolean,
+  output: vscode.OutputChannel
+): Promise<TerminalColors> {
   const config = vscode.workspace.getConfiguration("terminal-ssh");
   const hostColorsMap = config.get<Record<string, unknown>>("hostColors", {});
   let resolvedHostName: string | undefined;
@@ -183,19 +266,22 @@ function getTerminalColorsForHost(
 
   if (isFromConfigFile) {
     try {
-      const sshConfigPath = getEffectiveSshConfigPath();
+      const sshConfigPath = resolveSshConfigPath().effectivePath;
       if (fs.existsSync(sshConfigPath)) {
+        const { default: SSHConfig } = await import("@jeanp413/ssh-config");
+        const SSHConfigAny = SSHConfig as any;
         const configContent = fs.readFileSync(sshConfigPath, "utf-8");
-        const parsedConfig = SSHConfig.parse(configContent);
+        const parsedConfig = SSHConfigAny.parse(configContent);
         const hostConfig = parsedConfig.compute(targetHost) as Record<string, string>;
         resolvedHostName = hostConfig["HostName"];
         resolvedUser = hostConfig["User"];
       }
-    } catch {
-      // Ignore parse/resolve errors and fall back to target-based matching.
+    } catch (error) {
+      logError(output, "terminal-ssh.colorResolve", error);
     }
   }
 
+  const { resolveTerminalColors } = await import("./hostColorResolver.js");
   return resolveTerminalColors({
     targetHost,
     isFromConfigFile,
@@ -208,68 +294,232 @@ function getTerminalColorsForHost(
 
 async function connectWithProgress(
   targetHost: string,
-  isFromConfigFile: boolean = true,
+  isFromConfigFile: boolean,
   context: vscode.ExtensionContext,
-  terminalColors: TerminalColors
+  terminalColors: TerminalColors,
+  messages: ExtensionMessages,
+  output: vscode.OutputChannel
 ): Promise<void> {
-  const messages = getMessages();
-
-  return vscode.window.withProgress(
+  await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: messages.connecting.replace("{0}", targetHost),
       cancellable: false,
     },
     async () => {
-      try {
-        // SSHTerminal インスタンスを作成
-        const sshTerminal = new SSHTerminal(context);
+      const { SSHTerminal } = await import("./sshTerminal.js");
+      const sshTerminal = new SSHTerminal(context);
 
-        if (isFromConfigFile) {
-          const sshConfigPath = vscode.workspace
-            .getConfiguration("terminal-ssh")
-            .get<string>("sshConfigPath");
+      if (isFromConfigFile) {
+        const resolvedPath = resolveSshConfigPath();
+        output.appendLine(
+          `[connect] sshConfigPath configured='${resolvedPath.configuredPath || "(empty)"}' effective='${resolvedPath.effectivePath}' usedDefault=${resolvedPath.usedDefault}`
+        );
 
-          // 設定値が空または未定義の場合はデフォルトのパスを使用
-          const effectivePath =
-            sshConfigPath || path.join(os.homedir(), ".ssh", "config");
-
-          // 設定ファイルが存在するか確認
-          if (!fs.existsSync(effectivePath)) {
-            // 設定ファイルが存在しない場合はエラーメッセージを表示
-            vscode.window.showErrorMessage(
-              messages.sshConfigNotFound.replace("{0}", effectivePath)
-            );
-            return;
-          }
-
-          await sshTerminal.connect(
-            targetHost,
-            true,
-            effectivePath,
-            terminalColors
+        if (!fs.existsSync(resolvedPath.effectivePath)) {
+          vscode.window.showErrorMessage(
+            `${messages.sshConfigNotFound.replace("{0}", resolvedPath.effectivePath)} (setting: terminal-ssh.sshConfigPath='${resolvedPath.configuredPath || "(empty)"}')`
           );
-        } else {
-          await sshTerminal.connect(targetHost, false, undefined, terminalColors);
+          return;
         }
-
-        // 最低でも1秒間は進捗表示
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // 接続完了後にステータスバーに表示
-        vscode.window.setStatusBarMessage(
-          messages.connected.replace("{0}", targetHost),
-          2000
+        await sshTerminal.connect(
+          targetHost,
+          true,
+          resolvedPath.effectivePath,
+          terminalColors
         );
-      } catch (error) {
-        vscode.window.showErrorMessage(
-          `Failed to connect to ${targetHost}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
+      } else {
+        await sshTerminal.connect(targetHost, false, undefined, terminalColors);
       }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      vscode.window.setStatusBarMessage(
+        messages.connected.replace("{0}", targetHost),
+        2000
+      );
     }
   );
 }
 
-export function deactivate() {}
+async function handleTerminalConnection(
+  selectedItem: vscode.QuickPickItem | undefined,
+  inputValue: string | undefined,
+  context: vscode.ExtensionContext,
+  _split: boolean,
+  messages: ExtensionMessages,
+  output: vscode.OutputChannel
+): Promise<void> {
+  let targetHost = "";
+  let isFromConfigFile = true;
+
+  if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
+    const hostname = await vscode.window.showInputBox({
+      placeHolder: messages.hostname,
+      prompt: messages.enterHostname,
+    });
+    if (!hostname) {
+      return;
+    }
+
+    const username = await vscode.window.showInputBox({
+      placeHolder: messages.username,
+      prompt: messages.enterUsername,
+    });
+    if (!username) {
+      return;
+    }
+
+    targetHost = `${username}@${hostname}`;
+    isFromConfigFile = false;
+  } else if (selectedItem) {
+    targetHost = selectedItem.label;
+    isFromConfigFile = true;
+  } else if (inputValue) {
+    targetHost = inputValue;
+    isFromConfigFile = false;
+  }
+
+  if (!targetHost) {
+    return;
+  }
+
+  const terminalColors = await getTerminalColorsForHost(targetHost, isFromConfigFile, output);
+  output.appendLine(
+    `[connect] target='${targetHost}' isFromConfigFile=${isFromConfigFile} colors=${JSON.stringify(terminalColors)}`
+  );
+  await connectWithProgress(
+    targetHost,
+    isFromConfigFile,
+    context,
+    terminalColors,
+    messages,
+    output
+  );
+}
+
+async function runDiagnostics(
+  output: vscode.OutputChannel,
+  context: vscode.ExtensionContext
+): Promise<void> {
+  const extension =
+    vscode.extensions.getExtension("omni-kobo.internal-terminal-ssh") ??
+    vscode.extensions.getExtension("internal-terminal-ssh");
+  const commands = await vscode.commands.getCommands(true);
+  const requiredCommands = [
+    "terminal-ssh.newTerminal",
+    "terminal-ssh.splitTerminal",
+    "terminal-ssh.diagnose",
+  ];
+
+  output.appendLine("=== Terminal-SSH Diagnostics ===");
+  output.appendLine(`time: ${new Date().toISOString()}`);
+  output.appendLine(`vscode.language: ${vscode.env.language}`);
+  output.appendLine(`platform: ${process.platform} ${process.arch}`);
+  output.appendLine(`extension.id: ${extension?.id ?? "(not found)"}`);
+  output.appendLine(
+    `extension.version: ${extension?.packageJSON?.version ?? "(unknown)"}`
+  );
+  output.appendLine(`extension.path: ${context.extensionPath}`);
+  const terminalConfig = vscode.workspace.getConfiguration("terminal-ssh");
+  const sshConfigPathSetting = terminalConfig.get<string>("sshConfigPath") ?? "";
+  const defaultColors = terminalConfig.get<unknown>("defaultColors");
+  const hostColors = terminalConfig.get<Record<string, unknown>>("hostColors", {});
+  const resolvedPath = resolveSshConfigPath();
+  const nlsJaPath = path.join(context.extensionPath, "package.nls.ja.json");
+  const nlsEnPath = path.join(context.extensionPath, "package.nls.json");
+  output.appendLine(
+    `config.terminal-ssh.sshConfigPath(raw): ${JSON.stringify(sshConfigPathSetting)}`
+  );
+  output.appendLine(
+    `config.terminal-ssh.sshConfigPath(effective): ${resolvedPath.effectivePath}`
+  );
+  output.appendLine(
+    `config.terminal-ssh.sshConfigPath.exists: ${fs.existsSync(resolvedPath.effectivePath)}`
+  );
+  output.appendLine(
+    `config.terminal-ssh.defaultColors: ${JSON.stringify(defaultColors)}`
+  );
+  output.appendLine(
+    `config.terminal-ssh.hostColors.keys: ${Object.keys(hostColors).length}`
+  );
+  output.appendLine(`nls.package.nls.json.exists: ${fs.existsSync(nlsEnPath)}`);
+  output.appendLine(`nls.package.nls.ja.json.exists: ${fs.existsSync(nlsJaPath)}`);
+
+  for (const commandId of requiredCommands) {
+    output.appendLine(
+      `${commandId}: ${commands.includes(commandId) ? "registered" : "missing"}`
+    );
+  }
+
+  output.show(true);
+  await vscode.window.showInformationMessage(
+    "Terminal-SSH diagnostics written to Output: Terminal-SSH"
+  );
+}
+
+export function activate(context: vscode.ExtensionContext): void {
+  const output = vscode.window.createOutputChannel("Terminal-SSH");
+  context.subscriptions.push(output);
+  output.appendLine("[activate] Terminal-SSH activation started");
+
+  const runSafely =
+    (commandId: string, fn: () => Promise<void>) =>
+    async (): Promise<void> => {
+      try {
+        await fn();
+      } catch (error) {
+        logError(output, commandId, error);
+        await vscode.window.showErrorMessage(
+          "Terminal-SSH failed. See Output: Terminal-SSH"
+        );
+      }
+    };
+
+  const newTerminalDisposable = vscode.commands.registerCommand(
+    "terminal-ssh.newTerminal",
+    runSafely("terminal-ssh.newTerminal", async () => {
+      const messages = await loadMessages(output);
+      const { selectedItem, inputValue } = await showSSHQuickPick(messages, output);
+      await handleTerminalConnection(
+        selectedItem,
+        inputValue,
+        context,
+        false,
+        messages,
+        output
+      );
+    })
+  );
+
+  const splitTerminalDisposable = vscode.commands.registerCommand(
+    "terminal-ssh.splitTerminal",
+    runSafely("terminal-ssh.splitTerminal", async () => {
+      const messages = await loadMessages(output);
+      const { selectedItem, inputValue } = await showSSHQuickPick(messages, output);
+      await handleTerminalConnection(
+        selectedItem,
+        inputValue,
+        context,
+        true,
+        messages,
+        output
+      );
+    })
+  );
+
+  const diagnoseDisposable = vscode.commands.registerCommand(
+    "terminal-ssh.diagnose",
+    runSafely("terminal-ssh.diagnose", async () => {
+      await runDiagnostics(output, context);
+    })
+  );
+
+  context.subscriptions.push(
+    newTerminalDisposable,
+    splitTerminalDisposable,
+    diagnoseDisposable
+  );
+  output.appendLine("[activate] commands registered");
+}
+
+export function deactivate(): void {}

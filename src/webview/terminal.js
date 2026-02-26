@@ -268,6 +268,7 @@ window.addEventListener('message', (event) => {
                 if (backgroundInput) {
                     backgroundInput.value = currentColors.background;
                 }
+                setStatus(`Applied colors: fg=${currentColors.foreground}, bg=${currentColors.background}`);
             }
             break;
     }

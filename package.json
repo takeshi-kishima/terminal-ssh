@@ -2,7 +2,7 @@
   "name": "internal-terminal-ssh",
   "displayName": "internal Terminal SSH",
   "description": "Extension to connect to SSH hosts in editor pane",
-  "version": "0.9.2",
+  "version": "0.9.9",
   "repository": {
     "type": "git",
     "url": "https://github.com/takeshi-kishima/terminal-ssh.git"
@@ -75,6 +75,11 @@
         "title": "%terminal-ssh.splitTerminal.title%",
         "category": "Terminal-SSH",
         "enablement": "false"
+      },
+      {
+        "command": "terminal-ssh.diagnose",
+        "title": "%terminal-ssh.diagnose.title%",
+        "category": "Terminal-SSH"
       }
     ],
     "menus": {
@@ -92,13 +97,14 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run validate:nls && npm run compile",
     "copy-resources": "ts-node ./scripts/copyResources.ts",
     "compile": "npm run copy-resources && tsc -p ./",
     "watch": "npm run copy-resources && tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "validate:nls": "node scripts/validateNls.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -121,7 +127,10 @@
   "files": [
     "out",
     "media",
+    "node_modules/@jeanp413/ssh-config/**",
     "resources",
+    "package.nls.json",
+    "package.nls.ja.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE.md"
