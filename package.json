@@ -27,6 +27,40 @@
           "type": "string",
           "default": "",
           "description": "%terminal-ssh.sshConfigPath.description%"
+        },
+        "terminal-ssh.defaultColors": {
+          "type": "object",
+          "default": {
+            "foreground": "#f0f0f0",
+            "background": "#1e1e1e"
+          },
+          "description": "Default terminal colors. Example: {\"foreground\":\"#f0f0f0\",\"background\":\"#1e1e1e\"}",
+          "properties": {
+            "foreground": {
+              "type": "string"
+            },
+            "background": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "terminal-ssh.hostColors": {
+          "type": "object",
+          "default": {},
+          "description": "Per-host terminal colors. Example: {\"dev\":{\"foreground\":\"#d4ffd4\",\"background\":\"#102010\"}}",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "foreground": {
+                "type": "string"
+              },
+              "background": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },

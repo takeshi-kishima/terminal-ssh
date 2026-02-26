@@ -97,7 +97,7 @@ function isValidCssColor(value) {
     return typeof value === 'string' && value.trim().length > 0 && CSS.supports('color', value.trim());
 }
 
-function applyTerminalColors(foreground, background) {
+function applyTerminalColors(foreground, background, showStatus = true) {
     const nextForeground = typeof foreground === 'string' && foreground.trim() !== ''
         ? foreground.trim()
         : currentColors.foreground;
@@ -106,7 +106,9 @@ function applyTerminalColors(foreground, background) {
         : currentColors.background;
 
     if (!isValidCssColor(nextForeground) || !isValidCssColor(nextBackground)) {
-        setStatus('Invalid color code');
+        if (showStatus) {
+            setStatus('Invalid color code');
+        }
         return;
     }
 
@@ -121,7 +123,9 @@ function applyTerminalColors(foreground, background) {
         background: currentColors.background
     };
     terminalContainer.style.backgroundColor = currentColors.background;
-    setStatus('Color updated');
+    if (showStatus) {
+        setStatus('Color updated');
+    }
 }
 
 function setupColorMenu() {
@@ -254,6 +258,17 @@ window.addEventListener('message', (event) => {
             break;
         case 'setBackground':
             applyTerminalColors(currentColors.foreground, message.color);
+            break;
+        case 'setColors':
+            if (message.colors) {
+                applyTerminalColors(message.colors.foreground, message.colors.background, false);
+                if (foregroundInput) {
+                    foregroundInput.value = currentColors.foreground;
+                }
+                if (backgroundInput) {
+                    backgroundInput.value = currentColors.background;
+                }
+            }
             break;
     }
 });

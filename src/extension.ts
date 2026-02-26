@@ -1,9 +1,13 @@
-import * as vscode from "vscode";
+﻿import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import SSHConfig from "@jeanp413/ssh-config";
 import { getMessages } from "./i18n";
+import {
+  resolveTerminalColors,
+  type TerminalColors,
+} from "./hostColorResolver";
 import { SSHTerminal } from "./sshTerminal";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -65,13 +69,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(splitTerminalDisposable);
 }
 
-/**
- * ターミナル接続処理の共通メソッド
- * @param selectedItem クイックピックで選択されたアイテム
- * @param inputValue 入力された値
- * @param context 拡張機能のコンテキスト
- * @param split 分割するかどうか
- */
 async function handleTerminalConnection(
   selectedItem: vscode.QuickPickItem | undefined,
   inputValue: string | undefined,
@@ -108,11 +105,9 @@ async function handleTerminalConnection(
     // フルホスト名
     targetHost = `${username}@${hostname}`;
     isFromConfigFile = false;
-
   } else if (selectedItem) {
     targetHost = selectedItem.label;
     isFromConfigFile = true;
-
   } else if (inputValue) {
     targetHost = inputValue;
     isFromConfigFile = false;
@@ -122,16 +117,11 @@ async function handleTerminalConnection(
     return; // ホスト名がない場合は何もしない
   }
 
-  // 共通関数を使用してターミナル作成と接続を行う
-  await connectWithProgress(targetHost, isFromConfigFile, context);
+  const terminalColors = getTerminalColorsForHost(targetHost, isFromConfigFile);
+  await connectWithProgress(targetHost, isFromConfigFile, context, terminalColors);
 }
 
-/**
- * SSH設定ファイルからホスト情報を取得する
- */
-async function getSSHHosts(): Promise<
-  Array<{ label: string; description: string }>
-> {
+async function getSSHHosts(): Promise<Array<{ label: string; description: string }>> {
   const messages = getMessages();
   // 選択されたホストに接続
   const configPath = vscode.workspace
@@ -171,57 +161,66 @@ async function getSSHHosts(): Promise<
   } catch (error) {
     console.error(messages.readConfigError, error);
   }
+
   return hosts;
 }
 
-/**
- * ホスト名に基づいて色とアイコンを計算
- */
-function calculateHostIconAndColor(hostname: string) {
-  const messages = getMessages();
-  /**
-   * ホスト名に基づいて色とアイコンを計算
-   */
-  const colorIndex =
-    hostname.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6;
-  const emojis = ["🔵", "🟢", "🔴", "🟡", "🟣", "🔷"];
-  const emoji = emojis[colorIndex];
-
-  /**
-   * VS Codeのテーマカラー配列
-   */
-  const themeColors = [
-    "terminal.ansiBlue", // 青
-    "terminal.ansiGreen", // 緑
-    "terminal.ansiRed", // 赤
-    "terminal.ansiYellow", // 黄
-    "terminal.ansiMagenta", // マゼンタ（紫）
-    "terminal.ansiCyan", // シアン（水色）
-  ];
-
-  // 新しいターミナルを作成
-  return;
+function getEffectiveSshConfigPath(): string {
+  const configPath = vscode.workspace
+    .getConfiguration("terminal-ssh")
+    .get<string>("sshConfigPath");
+  return configPath || path.join(os.homedir(), ".ssh", "config");
 }
 
-/**
- * SSHターミナル接続と進捗表示を共通化した関数
- * @param targetHost 接続先ホスト名
- * @returns 作成されたターミナル
- */
-// context パラメータを追加する
+function getTerminalColorsForHost(
+  targetHost: string,
+  isFromConfigFile: boolean
+): TerminalColors {
+  const config = vscode.workspace.getConfiguration("terminal-ssh");
+  const hostColorsMap = config.get<Record<string, unknown>>("hostColors", {});
+  let resolvedHostName: string | undefined;
+  let resolvedUser: string | undefined;
+
+  if (isFromConfigFile) {
+    try {
+      const sshConfigPath = getEffectiveSshConfigPath();
+      if (fs.existsSync(sshConfigPath)) {
+        const configContent = fs.readFileSync(sshConfigPath, "utf-8");
+        const parsedConfig = SSHConfig.parse(configContent);
+        const hostConfig = parsedConfig.compute(targetHost) as Record<string, string>;
+        resolvedHostName = hostConfig["HostName"];
+        resolvedUser = hostConfig["User"];
+      }
+    } catch {
+      // Ignore parse/resolve errors and fall back to target-based matching.
+    }
+  }
+
+  return resolveTerminalColors({
+    targetHost,
+    isFromConfigFile,
+    defaultColorsInput: config.get<unknown>("defaultColors"),
+    hostColorsMap,
+    resolvedHostName,
+    resolvedUser,
+  });
+}
+
 async function connectWithProgress(
   targetHost: string,
   isFromConfigFile: boolean = true,
-  context: vscode.ExtensionContext // context パラメータを追加
+  context: vscode.ExtensionContext,
+  terminalColors: TerminalColors
 ): Promise<void> {
   const messages = getMessages();
+
   return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: messages.connecting.replace("{0}", targetHost),
       cancellable: false,
     },
-    async (progress) => {
+    async () => {
       try {
         // SSHTerminal インスタンスを作成
         const sshTerminal = new SSHTerminal(context);
@@ -244,11 +243,14 @@ async function connectWithProgress(
             return;
           }
 
-          // 設定ファイルを使用して接続
-          await sshTerminal.connect(targetHost, true, effectivePath);
+          await sshTerminal.connect(
+            targetHost,
+            true,
+            effectivePath,
+            terminalColors
+          );
         } else {
-          // 直接ホスト名を使用して接続
-          await sshTerminal.connect(targetHost, false);
+          await sshTerminal.connect(targetHost, false, undefined, terminalColors);
         }
 
         // 最低でも1秒間は進捗表示
@@ -270,5 +272,4 @@ async function connectWithProgress(
   );
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
