@@ -1,16 +1,24 @@
-﻿import * as vscode from "vscode";
+import * as vscode from "vscode";
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 
 type TerminalColors = {
   foreground: string;
   background: string;
 };
 
+type ConnectionExitInfo = {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  stderrTail: string;
+};
+
 export class SSHTerminal {
   private panel: vscode.WebviewPanel;
   private sshProcess: ChildProcessWithoutNullStreams | null = null;
   private disposables: vscode.Disposable[] = [];
+  private stderrChunks: string[] = [];
 
   constructor(private context: vscode.ExtensionContext) {
     this.panel = vscode.window.createWebviewPanel(
@@ -58,7 +66,9 @@ export class SSHTerminal {
     host: string,
     useConfigFile: boolean = false,
     configPath?: string,
-    terminalColors?: TerminalColors
+    terminalColors?: TerminalColors,
+    privateKeyPath?: string,
+    onConnectionExit?: (info: ConnectionExitInfo) => void
   ): Promise<void> {
     this.panel.title = host;
 
@@ -78,7 +88,13 @@ export class SSHTerminal {
                 colors: terminalColors,
               });
             }
-            this.startSSHProcess(host, useConfigFile, configPath);
+            this.startSSHProcess(
+              host,
+              useConfigFile,
+              configPath,
+              privateKeyPath,
+              onConnectionExit
+            );
             break;
 
           case "closePanel":
@@ -94,21 +110,12 @@ export class SSHTerminal {
   private startSSHProcess(
     host: string,
     useConfigFile: boolean = false,
-    configPath?: string
+    configPath?: string,
+    privateKeyPath?: string,
+    onConnectionExit?: (info: ConnectionExitInfo) => void
   ): void {
-    const sshArgs: string[] = [
-      "-tt",
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "UserKnownHostsFile=/dev/null",
-    ];
-
-    if (useConfigFile && configPath) {
-      sshArgs.push("-F", configPath);
-    }
-
-    sshArgs.push(host);
+    const sshArgs = buildSshArgs(host, useConfigFile, configPath, privateKeyPath);
+    this.stderrChunks = [];
 
     this.sshProcess = spawn("ssh", sshArgs, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -125,17 +132,28 @@ export class SSHTerminal {
 
     this.sshProcess.stderr.on("data", (data: Buffer) => {
       const output = data.toString("utf8");
+      this.stderrChunks.push(output);
+      if (this.stderrChunks.length > 50) {
+        this.stderrChunks.shift();
+      }
       this.panel.webview.postMessage({
         type: "output",
         data: output,
       });
     });
 
-    this.sshProcess.on("close", (code: number) => {
+    this.sshProcess.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
       this.panel.webview.postMessage({
         type: "exit",
         code,
       });
+      if (onConnectionExit) {
+        onConnectionExit({
+          code,
+          signal,
+          stderrTail: this.stderrChunks.join(""),
+        });
+      }
     });
   }
 
@@ -195,4 +213,30 @@ export class SSHTerminal {
     this.disposables.forEach((d) => d.dispose());
     this.disposables = [];
   }
+}
+
+export function buildSshArgs(
+  host: string,
+  useConfigFile: boolean = false,
+  configPath?: string,
+  privateKeyPath?: string
+): string[] {
+  const sshArgs: string[] = [
+    "-tt",
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "UserKnownHostsFile=/dev/null",
+  ];
+
+  if (useConfigFile && configPath) {
+    sshArgs.push("-F", configPath);
+  }
+
+  if (privateKeyPath && privateKeyPath.trim().length > 0) {
+    sshArgs.push("-i", path.resolve(privateKeyPath), "-o", "IdentitiesOnly=yes");
+  }
+
+  sshArgs.push(host);
+  return sshArgs;
 }

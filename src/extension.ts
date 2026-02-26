@@ -20,6 +20,12 @@ type ExtensionMessages = {
   connected: string;
   sshConfigNotFound: string;
   readConfigError: string;
+  privateKeyPath: string;
+  enterPrivateKeyPath: string;
+  privateKeyOptional: string;
+  privateKeyNotFound: string;
+  privateKeyRetryPrompt: string;
+  privateKeyRetryAction: string;
 };
 
 type ResolvedSshConfigPath = {
@@ -40,6 +46,12 @@ const FALLBACK_MESSAGES: ExtensionMessages = {
   connected: "Connected to {0}",
   sshConfigNotFound: "SSH configuration file not found: {0}",
   readConfigError: "Failed to read SSH configuration file:",
+  privateKeyPath: "Private key path (optional), e.g. ~/.ssh/id_rsa",
+  enterPrivateKeyPath: "Enter private key path for this connection (optional)",
+  privateKeyOptional: "Leave empty to connect without specifying a private key",
+  privateKeyNotFound: "Private key file not found: {0}",
+  privateKeyRetryPrompt: "Authentication failed. Select a private key and retry?",
+  privateKeyRetryAction: "Select Key and Retry",
 };
 
 function errorToText(error: unknown): string {
@@ -82,7 +94,7 @@ function resolveSshConfigPath(): ResolvedSshConfigPath {
   const usedDefault = configuredPath.length === 0;
   const effectivePath = usedDefault
     ? path.join(os.homedir(), ".ssh", "config")
-    : expandConfigPath(configuredPath);
+    : expandPathPlaceholders(configuredPath);
 
   return {
     configuredPath,
@@ -91,7 +103,7 @@ function resolveSshConfigPath(): ResolvedSshConfigPath {
   };
 }
 
-function expandConfigPath(inputPath: string): string {
+export function expandPathPlaceholders(inputPath: string): string {
   let expanded = inputPath;
 
   // Allow users to configure "~/.ssh/config" style paths.
@@ -298,7 +310,13 @@ async function connectWithProgress(
   context: vscode.ExtensionContext,
   terminalColors: TerminalColors,
   messages: ExtensionMessages,
-  output: vscode.OutputChannel
+  output: vscode.OutputChannel,
+  privateKeyPath?: string,
+  onConnectionExit?: (info: {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+    stderrTail: string;
+  }) => void
 ): Promise<void> {
   await vscode.window.withProgress(
     {
@@ -326,10 +344,19 @@ async function connectWithProgress(
           targetHost,
           true,
           resolvedPath.effectivePath,
-          terminalColors
+          terminalColors,
+          undefined,
+          onConnectionExit
         );
       } else {
-        await sshTerminal.connect(targetHost, false, undefined, terminalColors);
+        await sshTerminal.connect(
+          targetHost,
+          false,
+          undefined,
+          terminalColors,
+          privateKeyPath,
+          onConnectionExit
+        );
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -338,6 +365,41 @@ async function connectWithProgress(
         2000
       );
     }
+  );
+}
+
+async function promptPrivateKeyPath(
+  messages: ExtensionMessages
+): Promise<string | undefined> {
+  const selectedFiles = await vscode.window.showOpenDialog({
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    openLabel: messages.privateKeyPath,
+    title: messages.enterPrivateKeyPath,
+  });
+
+  if (!selectedFiles || selectedFiles.length === 0) {
+    return undefined;
+  }
+
+  return expandPathPlaceholders(selectedFiles[0].fsPath);
+}
+
+export function shouldSuggestPrivateKeyRetry(
+  code: number | null,
+  stderrTail: string
+): boolean {
+  if (code === 0) {
+    return false;
+  }
+
+  const normalized = stderrTail.toLowerCase();
+  return (
+    normalized.includes("permission denied (publickey") ||
+    normalized.includes("permission denied (publickey,gssapi-keyex,gssapi-with-mic") ||
+    normalized.includes("no such identity") ||
+    normalized.includes("sign_and_send_pubkey")
   );
 }
 
@@ -351,6 +413,7 @@ async function handleTerminalConnection(
 ): Promise<void> {
   let targetHost = "";
   let isFromConfigFile = true;
+  let privateKeyPath: string | undefined;
 
   if (selectedItem && selectedItem.label.includes(messages.newConnection)) {
     const hostname = await vscode.window.showInputBox({
@@ -385,7 +448,11 @@ async function handleTerminalConnection(
 
   const terminalColors = await getTerminalColorsForHost(targetHost, isFromConfigFile, output);
   output.appendLine(
-    `[connect] target='${targetHost}' isFromConfigFile=${isFromConfigFile} colors=${JSON.stringify(terminalColors)}`
+    `[connect] target='${targetHost}' isFromConfigFile=${isFromConfigFile} privateKeyProvided=${Boolean(
+      privateKeyPath
+    )} privateKeyFile='${
+      privateKeyPath ? path.basename(privateKeyPath) : "(none)"
+    }' colors=${JSON.stringify(terminalColors)}`
   );
   await connectWithProgress(
     targetHost,
@@ -393,7 +460,51 @@ async function handleTerminalConnection(
     context,
     terminalColors,
     messages,
-    output
+    output,
+    privateKeyPath,
+    async (info) => {
+      if (isFromConfigFile || privateKeyPath) {
+        return;
+      }
+
+      if (!shouldSuggestPrivateKeyRetry(info.code, info.stderrTail)) {
+        return;
+      }
+
+      const action = await vscode.window.showWarningMessage(
+        messages.privateKeyRetryPrompt,
+        messages.privateKeyRetryAction
+      );
+      if (action !== messages.privateKeyRetryAction) {
+        return;
+      }
+
+      const selectedKeyPath = await promptPrivateKeyPath(messages);
+      if (!selectedKeyPath) {
+        return;
+      }
+      if (!fs.existsSync(selectedKeyPath)) {
+        await vscode.window.showErrorMessage(
+          messages.privateKeyNotFound.replace("{0}", selectedKeyPath)
+        );
+        return;
+      }
+
+      output.appendLine(
+        `[connect] retryWithPrivateKey target='${targetHost}' privateKeyFile='${path.basename(
+          selectedKeyPath
+        )}'`
+      );
+      await connectWithProgress(
+        targetHost,
+        false,
+        context,
+        terminalColors,
+        messages,
+        output,
+        selectedKeyPath
+      );
+    }
   );
 }
 

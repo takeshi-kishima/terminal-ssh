@@ -10,4 +10,10 @@
   connected: "{0} に接続しました",
   sshConfigNotFound: "SSH 設定ファイルが見つかりません: {0}",
   readConfigError: "SSH 設定ファイルの読み込みに失敗しました:",
+  privateKeyPath: "秘密鍵パス（任意） 例: ~/.ssh/id_rsa",
+  enterPrivateKeyPath: "この接続で使用する秘密鍵パスを入力してください（任意）",
+  privateKeyOptional: "空欄のままなら秘密鍵を明示指定せず接続します",
+  privateKeyNotFound: "秘密鍵ファイルが見つかりません: {0}",
+  privateKeyRetryPrompt: "認証に失敗しました。秘密鍵を選択して再試行しますか？",
+  privateKeyRetryAction: "秘密鍵を選択して再試行",
 };

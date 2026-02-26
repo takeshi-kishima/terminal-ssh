@@ -16,6 +16,12 @@ This extension allows you to easily establish SSH connections directly within VS
 ![menu](resources/img-02.png)
 1. When you connect to a selected host, a new SSH session will be displayed in an editor pane.
 
+## Private Key Authentication
+
+- For manual connections (`user@host`), the extension first attempts to connect without explicitly specifying a key.
+- If authentication fails with public key related errors, the extension prompts you to select a private key file and retry.
+- The private key is selected via a file chooser dialog.
+
 ## Configuration
 
 You can specify a custom SSH configuration file in `settings.json`:

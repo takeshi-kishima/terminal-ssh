@@ -10,4 +10,10 @@ export const messages = {
   connected: "Connected to {0}",
   sshConfigNotFound: "SSH configuration file not found: {0}",
   readConfigError: "Failed to read SSH configuration file:",
+  privateKeyPath: "Private key path (optional), e.g. ~/.ssh/id_rsa",
+  enterPrivateKeyPath: "Enter private key path for this connection (optional)",
+  privateKeyOptional: "Leave empty to connect without specifying a private key",
+  privateKeyNotFound: "Private key file not found: {0}",
+  privateKeyRetryPrompt: "Authentication failed. Select a private key and retry?",
+  privateKeyRetryAction: "Select Key and Retry",
 };
