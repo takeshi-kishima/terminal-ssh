@@ -8,6 +8,27 @@
   </head>
   <body>
     <div id="terminal-container"></div>
+    <div id="color-menu" class="color-menu is-collapsed" aria-label="Color menu">
+      <button id="color-menu-toggle" class="color-menu-toggle" type="button" title="Open color menu">
+        Color
+      </button>
+      <div id="color-menu-panel" class="color-menu-panel">
+        <div id="color-menu-handle" class="color-menu-handle" title="Drag to move">
+          Colors
+        </div>
+        <label class="color-row" for="foreground-input">
+          Text
+          <input id="foreground-input" type="text" placeholder="#f0f0f0 or white" />
+        </label>
+        <label class="color-row" for="background-input">
+          Background
+          <input id="background-input" type="text" placeholder="#1e1e1e or black" />
+        </label>
+        <div class="color-actions">
+          <button id="apply-colors" type="button">Apply</button>
+        </div>
+      </div>
+    </div>
     <div class="status" id="status"></div>
 
     <!-- スクリプト読み込み -->

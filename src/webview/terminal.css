@@ -18,6 +18,92 @@ body {
   padding-bottom: 10px;
 }
 
+.color-menu {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 40;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: none;
+}
+
+.color-menu-toggle {
+  width: 58px;
+  height: 28px;
+  border: 1px solid #555;
+  border-radius: 14px;
+  background: rgba(30, 30, 30, 0.92);
+  color: #f0f0f0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.color-menu.is-collapsed .color-menu-panel {
+  display: none;
+}
+
+.color-menu-panel {
+  width: 210px;
+  padding: 8px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: rgba(30, 30, 30, 0.95);
+  color: #f0f0f0;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.color-menu-handle {
+  margin: -8px -8px 8px -8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #4a4a4a;
+  cursor: move;
+  font-size: 12px;
+  color: #ddd;
+}
+
+.color-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.color-row input {
+  height: 26px;
+  padding: 4px 8px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  background: #141414;
+  color: #f0f0f0;
+  outline: none;
+}
+
+.color-row input:focus {
+  border-color: #9ab6ff;
+}
+
+.color-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+#apply-colors {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #666;
+  border-radius: 6px;
+  background: #2d2d2d;
+  color: #fff;
+  cursor: pointer;
+}
+
+#apply-colors:hover {
+  background: #3c3c3c;
+}
+
 .xterm {
   width: 100% !important;
   height: calc(100% - 5px) !important;
